@@ -3,9 +3,10 @@
 ;;; To Do:
 ;;; Change all strings to symbols
 
+(defparameter *n-tries* 100000)
 
 ;;; To trace change (setf *trace?* nil)
-(defvar *trace?* t)
+(defparameter *trace?* nil)
 
 (defparameter *accessoryTypes* '("ring" "bracelet" "necklace"))
 (defparameter *atkSpds* '("SLOW" "NORMAL" "FAST"))
@@ -732,46 +733,83 @@
 (defparameter *ingreds* nil)
 (defvar *n-ingreds* nil)
 
+(defmacro thing-is-neg-or-0 (thing)
+  `(if (> ,thing 0) 0 ,thing))
+
+(defmacro reqsums ()
+  `(loop for req in reqs
+	if (< req 0) sum 0
+	else sum req))
+
+(defmacro comp-score-01 ()
+  `(/ (* (+ stat-math-result (thing-is-neg-or-0 edampct)) cube-root-durability)
+      (+ 1.0 (/ (sqrt (reqsums)) 10.0))))
+
+(defmacro stat-math (expr)
+  (stat-math-tree-convert expr))
+
+(defun stat-math-tree-convert (expr)
+  (cond ((null expr) expr)
+        ((numberp expr) expr) 
+	((member expr '(+ - / * expt sqrt)) expr)
+	((atom expr) `(if (numberp ,expr) ,expr 0))
+	(:else (mapcar #'stat-math-tree-convert expr))))
+  
 (defun score-craft (craft skill)
   (let* ((statmap (craft-statmap craft))
 	 (maxrolls (gget statmap "maxrolls"))
-	 (walk-speed (gget maxrolls "spd"))	  ;; ??????????????
-	 (spell-damage (gget maxrolls "sdamraw")) ;; ??????????????
-	 (root-durability (expt (second (gget statmap "durability")) 1/3))
-	 (eDamPct (gget maxrolls "sdamraw")) ;; ????????????????
-	 (sdam+wlkspd (+ (if (numberp spell-damage) spell-damage 0) (if (numberp walk-speed) walk-speed 0)))
-	 (edam+wlkspd (+ (if (numberp edampct) edampct 0) (if (numberp walk-speed) walk-speed 0)))
+	 (reqs (gget statmap "reqs"))
+	 (walk-speed (gget maxrolls "spd"))
+	 (spell-damage (gget maxrolls "sdam")) ;; There doesn't appear to be a property called "sdam" (or any other version thereof)???
+	 (cube-root-durability (expt (second (gget statmap "durability")) 1/3))
+	 (eDamPct (gget maxrolls "edampct"))
+	 (stat-math-result (stat-math (+ spell-damage walk-speed)))
+	 ;;(edam+wlkspd (+ (if (numberp edampct) edampct 0) (if (numberp walk-speed) walk-speed 0)))
 	 )
-    (/
-     (case skill
-       (ARMOURING (* root-durability (if (zerop sdam+wlkspd) 1.0 sdam+wlkspd)))
-       (JEWELING (* root-durability (if (zerop edam+wlkspd) 1.0 edam+wlkspd)))
-       (t (* root-durability (if (numberp walk-speed) walk-speed 1.0))))
-     (+ 1.0 (/ (sqrt (loop for req in (gget statmap "reqs")
-		     if (< req 0) sum 0
-		     else sum req))
-	       10.0)))))
+    (comp-score-01)))
+
 
 (defun find-a-random-compatible-ingredient (skill)
   (loop as i = (nth (random *n-ingreds*) *ingreds*)
 	if (member skill (gget i "skills") :test #'string-equal)
 	do (return i)))
 
+(defun filter-ingreds (ingreds)
+  (loop for ingred in ingreds
+	if (acceptable-ingred ingred)
+	collect ingred))
+
+;; (or (> durability 0)
+;;     (includes one or more of the stats being optimized) [spd]
+;;     (has any effect on positional effectiveness (non-zero in any position))
+;;     ))
+
+(defun acceptable-ingred (ingred)
+  (and (member? "jeweling" (gget ingred "skills"))
+       (let ((ids (gget ingred "ids")))
+	 (or (gget ids "sdam")
+	     (gget ids "spd")
+	     (> (gget (gget ingred "itemids") "dura") 0)
+	     (loop for (pos value) on (gget ingred "posMods") by #'cddr
+		   if (> value 0)
+		   do (return t))))))
+
 (defun run (&optional (ntries 10000))
   (load "recipes.lisp")
   (load "ingreds.lisp")
+  (print (length (setf *ingreds* (filter-ingreds *ingreds*))))
   (setf *n-ingreds* (length *ingreds*))
   (loop for recipe+ in *recipes*
 	as recipe = (car (gget recipe+ 'data))
 	as skill = (read-from-string (gget recipe "skill"))
 	if (and (equal '(100 103) (gget recipe "level"))
-		(or (and (listp skill) (member? "tailoring" skill))
-		    (string-equal skill "tailoring")))
+		(or (and (listp skill) (member? "jeweling" skill))
+		    (string-equal skill "jeweling")))
 	do (format t "~%~%==================================~%~s~%==================================~%~%" recipe)
 	(loop for try below ntries
 	      with top-score = -999
 	      with top = nil
-	      as mat_tiers = (list (1+ (random 3)) (1+ (random 3)))
+	      as mat_tiers = '(3 3) ;; (list (1+ (random 3)) (1+ (random 3)))
 	      as ingreds = (loop for i below 6
 			      collect (if (not (zerop (random 3)))
 					  (find-a-random-compatible-ingredient skill)))
@@ -787,5 +825,5 @@
 (untrace)
 ;;;(trace score-craft)
 
-(run 1000000)
+(run *n-tries*)
 

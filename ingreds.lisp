@@ -301,7 +301,7 @@
      consumableIDs (charges 0 dura 0) id 55)
     (name "Fresh Bone" tier 0 skills ("WOODWORKING" "WEAPONSMITHING")
      level 61 ids (xpb (2 5) lb (1 4))
-     temids (dura -77 strReq 0 dexReq 0 intReq 0 defReq 0 agiReq 0) consumableIDs (charges 0 dura 0)
+     itemids (dura -77 strReq 0 dexReq 0 intReq 0 defReq 0 agiReq 0) consumableIDs (charges 0 dura 0)
      posMods (left 0 right 0 above 0 under 0 touching 0 notTouching 0) id 56)
     (name "Fungi Spores" tier 0 skills ("COOKING")
      level 7 ids (poison (1 3))
